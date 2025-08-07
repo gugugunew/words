@@ -315,6 +315,25 @@
     </style>
 </head>
 <body class="font-inter bg-white text-primary antialiased dark:bg-dark-main dark:text-white min-h-screen flex flex-col transition-colors duration-300 light">
+<!-- 新增磨砂背景遮罩 -->
+<div id="donation-overlay" class="hidden fixed inset-0 z-49 backdrop-blur-md bg-black/30 dark:bg-black/50"></div>
+
+<!-- 资助提示框（定位在VOCAB下方） -->
+<div id="donation-prompt" class="hidden fixed top-16 left-6 z-50 bg-white dark:bg-dark-secondary p-4 rounded-lg shadow-lg max-w-sm w-[calc(100%-48px)]">
+    <!-- 新增关闭按钮 -->
+    <button id="donation-close" class="absolute top-3 right-3 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+        <i class="fa-solid fa-times"></i>
+    </button>
+    
+    <p class="text-sm text-secondary dark:text-gray-300 mt-1">如果你觉得有帮助，感觉好玩，你可以随意资助</p>
+    <label class="flex items-center mt-3 cursor-pointer">
+        <input type="checkbox" id="donation-check" class="mr-2 h-4 w-4 accent-accent">
+        <span class="text-sm">Ok</span>
+    </label>
+    <div id="qr-code" class="hidden mt-3 flex justify-center">
+        <img src="1.jpg" alt="00" class="w-32 h-32 rounded-md">
+    </div>
+</div>
     <!-- 磨砂玻璃遮罩层 -->
     <div id="overlay" class="overlay"></div>
     
@@ -391,7 +410,7 @@
     <!-- 导航栏 -->
     <header id="navbar" class="fixed w-full z-50 nav-transition py-4 bg-white/90 dark:bg-dark-main/90 backdrop-blur-sm shadow-sm">
         <div class="container mx-auto px-6 md:px-12 flex flex-wrap items-center justify-between gap-4">
-            <a href="#" class="text-2xl font-bold tracking-tight flex items-center h-10">VOCAB</a>
+            <a href="#" id="vocab-title" class="text-2xl font-bold tracking-tight flex items-center h-10 cursor-pointer">VOCAB</a>
             
             <!-- 桌面端布局 -->
             <div class="hidden md:flex items-center w-auto">
@@ -822,7 +841,13 @@
 
         function initElements() {
             appState.elements = {
-                // 导航栏元素
+    vocabTitle: document.getElementById('vocab-title'),
+    donationPrompt: document.getElementById('donation-prompt'),
+    donationCheck: document.getElementById('donation-check'),
+    qrCode: document.getElementById('qr-code'),
+    donationClose: document.getElementById('donation-close'), // 新增
+    donationOverlay: document.getElementById('donation-overlay'), // 新增
+		 // 导航栏元素
                 navbar: document.getElementById('navbar'),
                 immersiveToggle: document.getElementById('immersive-toggle'),
                 exitImmersiveBtn: document.getElementById('exit-immersive-btn'),
@@ -937,7 +962,46 @@
             appState.elements.modeToggle.textContent = fullText;
             appState.elements.mobileModeToggle.textContent = fullText;
         }
+// 初始化资助功能
+function setupDonationFeatures() {
+    const { 
+        vocabTitle, donationPrompt, donationCheck, 
+        qrCode, donationClose, donationOverlay 
+    } = appState.elements;
 
+    // 显示提示框（点击VOCAB时）
+    vocabTitle.addEventListener('click', (e) => {
+        e.preventDefault();
+        donationPrompt.classList.remove('hidden');
+        donationOverlay.classList.remove('hidden'); // 显示磨砂背景
+    });
+
+    // 关闭提示框（点击×按钮）
+    donationClose.addEventListener('click', () => {
+        donationPrompt.classList.add('hidden');
+        donationOverlay.classList.add('hidden');
+    });
+
+    // 关闭提示框（点击磨砂背景）
+    donationOverlay.addEventListener('click', () => {
+        donationPrompt.classList.add('hidden');
+        donationOverlay.classList.add('hidden');
+    });
+
+    // 点击提示框内部不关闭
+    donationPrompt.addEventListener('click', (e) => {
+        e.stopPropagation(); // 阻止事件冒泡到背景
+    });
+
+    // 勾选后显示收款码
+    donationCheck.addEventListener('change', (e) => {
+        if (e.target.checked) {
+            qrCode.classList.remove('hidden');
+        } else {
+            qrCode.classList.add('hidden');
+        }
+    });
+}
                                      async function initApp() {
             // 先加载JSON数据
             const loadSuccess = await loadDataFromJson();
@@ -960,6 +1024,7 @@
             renderWordList();
             setupEventListeners();
             setupUserActionHandling();
+	    setupDonationFeatures();
             
             // 初始化时更新下拉菜单，隐藏当前选中项
             updateBookDropdown();
@@ -1123,8 +1188,8 @@ function getBookDisplayName(bookKey) {
 // 按分号截取并取第一部分，再限制长度
 translationText = translationText.split(';')[0];
 // 简单长度限制
-if (translationText.length > 15) {
-    translationText = translationText.substring(0, 15) + '...';
+if (translationText.length > 30) {
+    translationText = translationText.substring(0, 30) + '...';
 }
 appState.elements.translation.textContent = translationText;
             } else {
@@ -1435,24 +1500,22 @@ appState.elements.translation.textContent = translationText;
                 });
         }
 
-       function playAudioFromUrl(audioUrl) {
+      function playAudioFromUrl(audioUrl) {
     stopPlayback();
     
     appState.audioElement = new Audio(audioUrl);
     appState.isPlaying = true;
     updatePlayButtonState();
     
-    // 添加10秒超时计时器
-    appState.playTimeout = setTimeout(() => {
-        console.log("播放超时（10秒未完成）");
-        appState.isPlaying = false;
-        updatePlayButtonState();
-        showNotification("发音播放超时");
-        
-        if (appState.isAutoPlaying) {
-            nextWord();
-        }
-    }, 10000); // 10秒超时
+    // 仅在非自动播放模式下设置10秒超时（重点修改）
+    if (!appState.isAutoPlaying) {
+        appState.playTimeout = setTimeout(() => {
+            console.log("播放超时（10秒未完成）");
+            appState.isPlaying = false;
+            updatePlayButtonState();
+            showNotification("发音播放超时");
+        }, 10000); // 10秒超时
+    }
     
     appState.audioElement.onended = () => {
         // 清除超时计时器
@@ -1480,7 +1543,6 @@ appState.elements.translation.textContent = translationText;
         }
     });
 }
-
 // 修改stopPlayback函数，确保清除超时计时器
 function stopPlayback() {
     if (appState.audioElement) {
